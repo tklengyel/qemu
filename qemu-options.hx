@@ -3354,6 +3354,9 @@ DEF("xen-attach", 0, QEMU_OPTION_xen_attach,
     "-xen-attach     attach to existing xen domain\n"
     "                xend will use this when starting QEMU\n",
     QEMU_ARCH_ALL)
+DEF("xen-q35", 0, QEMU_OPTION_xen_q35,
+    "-xen-q35        use hybrid xen q35\n",
+    QEMU_ARCH_I386)
 STEXI
 @item -xen-domid @var{id}
 @findex -xen-domid

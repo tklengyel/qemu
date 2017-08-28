@@ -411,7 +411,7 @@ static void pc_i440fx_machine_options(MachineClass *m)
 static void pc_i440fx_2_9_machine_options(MachineClass *m)
 {
     pc_i440fx_machine_options(m);
-    m->alias = "old-pc";
+    m->alias = xen_q35 ? "old-pc" : "pc";
     m->is_default = 1;
 }
 

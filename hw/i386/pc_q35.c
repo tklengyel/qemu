@@ -35,6 +35,7 @@
 #include "hw/boards.h"
 #include "hw/timer/mc146818rtc.h"
 #include "hw/xen/xen.h"
+#include "sysemu/block-backend.h"
 #include "sysemu/kvm.h"
 #include "hw/kvm/clock.h"
 #include "hw/pci-host/q35.h"
@@ -64,7 +65,6 @@ static void xen_map_efi_var_rom(MemoryRegion *rom_memory)
     char *fatal_errmsg = NULL;
     hwaddr phys_addr = 0xffe00000ULL;
     int sector_bits, sector_size;
-    pflash_t *system_flash;
     char name[64];
 
     pflash_drv = drive_get(IF_PFLASH, 0, 0);
@@ -112,15 +112,15 @@ static void xen_map_efi_var_rom(MemoryRegion *rom_memory)
 
     /* pflash_cfi01_register() creates a deep copy of the name */
     snprintf(name, sizeof name, "system.flash0");
-    system_flash = pflash_cfi01_register(phys_addr, NULL /* qdev */, name,
-                                         size, blk, sector_size,
-                                         size >> sector_bits,
-                                         1      /* width */,
-                                         0x0000 /* id0 */,
-                                         0x0000 /* id1 */,
-                                         0x0000 /* id2 */,
-                                         0x0000 /* id3 */,
-                                         0      /* be */);
+    pflash_cfi01_register(phys_addr, NULL /* qdev */, name,
+                          size, blk, sector_size,
+                          size >> sector_bits,
+                          1      /* width */,
+                          0x0000 /* id0 */,
+                          0x0000 /* id1 */,
+                          0x0000 /* id2 */,
+                          0x0000 /* id3 */,
+                          0      /* be */);
 }
 
 /* PC hardware initialisation */
@@ -386,7 +386,7 @@ static void pc_q35_machine_options(MachineClass *m)
 static void pc_q35_2_9_machine_options(MachineClass *m)
 {
     pc_q35_machine_options(m);
-    m->alias = "pc";
+    m->alias = xen_q35 ? "pc" : "q35";
 }
 
 DEFINE_Q35_MACHINE(v2_9, "pc-q35-2.9", NULL,

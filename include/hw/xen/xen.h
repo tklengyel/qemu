@@ -23,6 +23,7 @@ extern uint32_t xen_domid;
 extern enum xen_mode xen_mode;
 
 extern bool xen_allowed;
+extern bool xen_q35;
 
 static inline bool xen_enabled(void)
 {
