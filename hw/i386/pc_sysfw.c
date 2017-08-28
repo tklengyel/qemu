@@ -35,6 +35,7 @@
 #include "sysemu/sysemu.h"
 #include "hw/block/flash.h"
 #include "sysemu/kvm.h"
+#include "hw/xen/xen.h"
 
 #define BIOS_FILENAME "bios.bin"
 
@@ -166,7 +167,7 @@ static void pc_system_flash_init(MemoryRegion *rom_memory)
                                              0x0000 /* id2 */,
                                              0x0000 /* id3 */,
                                              0      /* be */);
-        if (unit == 0) {
+        if (unit == 0 && !xen_enabled()) {
             flash_mem = pflash_cfi01_get_memory(system_flash);
             pc_isa_bios_init(rom_memory, flash_mem, size);
         }

@@ -123,6 +123,12 @@ int xen_pci_slot_get_pirq(PCIDevice *pci_dev, int irq_num)
     return irq_num + ((pci_dev->devfn >> 3) << 2);
 }
 
+void xen_q35_set_irq(void *opaque, int irq_num, int level)
+{
+    xc_hvm_set_pci_intx_level(xen_xc, xen_domid, 0, 0, irq_num >> 2,
+                              irq_num & 3, level);
+}
+
 void xen_piix3_set_irq(void *opaque, int irq_num, int level)
 {
     xc_hvm_set_pci_intx_level(xen_xc, xen_domid, 0, 0, irq_num >> 2,

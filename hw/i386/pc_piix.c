@@ -387,35 +387,6 @@ static void pc_init_isa(MachineState *machine)
     pc_init1(machine, TYPE_I440FX_PCI_HOST_BRIDGE, TYPE_I440FX_PCI_DEVICE);
 }
 
-#ifdef CONFIG_XEN
-static void pc_xen_hvm_init_pci(MachineState *machine)
-{
-    const char *pci_type = has_igd_gfx_passthru ?
-                TYPE_IGD_PASSTHROUGH_I440FX_PCI_DEVICE : TYPE_I440FX_PCI_DEVICE;
-
-    pc_init1(machine,
-             TYPE_I440FX_PCI_HOST_BRIDGE,
-             pci_type);
-}
-
-static void pc_xen_hvm_init(MachineState *machine)
-{
-    PCIBus *bus;
-
-    if (!xen_enabled()) {
-        error_report("xenfv machine requires the xen accelerator");
-        exit(1);
-    }
-
-    pc_xen_hvm_init_pci(machine);
-
-    bus = pci_find_primary_bus();
-    if (bus != NULL) {
-        pci_create_simple(bus, -1, "xen-platform");
-    }
-}
-#endif
-
 #define DEFINE_I440FX_MACHINE(suffix, name, compatfn, optionfn) \
     static void pc_init_##suffix(MachineState *machine) \
     { \
@@ -440,7 +411,7 @@ static void pc_i440fx_machine_options(MachineClass *m)
 static void pc_i440fx_2_9_machine_options(MachineClass *m)
 {
     pc_i440fx_machine_options(m);
-    m->alias = "pc";
+    m->alias = "old-pc";
     m->is_default = 1;
 }
 
@@ -1098,17 +1069,3 @@ static void isapc_machine_options(MachineClass *m)
 
 DEFINE_PC_MACHINE(isapc, "isapc", pc_init_isa,
                   isapc_machine_options);
-
-
-#ifdef CONFIG_XEN
-static void xenfv_machine_options(MachineClass *m)
-{
-    m->desc = "Xen Fully-virtualized PC";
-    m->max_cpus = HVM_MAX_VCPUS;
-    m->default_machine_opts = "accel=xen";
-    m->hot_add_cpu = pc_hot_add_cpu;
-}
-
-DEFINE_PC_MACHINE(xenfv, "xenfv", pc_xen_hvm_init,
-                  xenfv_machine_options);
-#endif

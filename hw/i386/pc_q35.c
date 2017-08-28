@@ -47,9 +47,81 @@
 #include "hw/usb.h"
 #include "qemu/error-report.h"
 #include "migration/migration.h"
+#include "hw/block/flash.h"
+#ifdef CONFIG_XEN
+#  include <xen/hvm/hvm_info_table.h>
+#endif
 
 /* ICH9 AHCI has 6 ports */
 #define MAX_SATA_PORTS     6
+
+static void xen_map_efi_var_rom(MemoryRegion *rom_memory)
+{
+    DriveInfo *pflash_drv;
+    BlockBackend *blk;
+    int64_t size;
+
+    char *fatal_errmsg = NULL;
+    hwaddr phys_addr = 0xffe00000ULL;
+    int sector_bits, sector_size;
+    pflash_t *system_flash;
+    char name[64];
+
+    pflash_drv = drive_get(IF_PFLASH, 0, 0);
+
+    if (!pflash_drv) {
+        error_report("XEN EFI NVRAM - No pflash device found\n");
+        exit(1);
+	}
+
+    blk = blk_by_legacy_dinfo(pflash_drv);
+    size = blk_getlength(blk);
+
+    sector_bits = 12;
+    sector_size = 1 << sector_bits;
+
+    if (size < 0) {
+        fatal_errmsg = g_strdup_printf("failed to get backing file size");
+    } else if (size == 0) {
+        fatal_errmsg = g_strdup_printf("PC system firmware (pflash) "
+                                       "cannot have zero size");
+    } else if ((size % sector_size) != 0) {
+        fatal_errmsg = g_strdup_printf("PC system firmware (pflash) "
+                                  "must be a multiple of 0x%x", sector_size);
+    } else if (size != 0x20000) {
+        fatal_errmsg = g_strdup_printf("image must be exactly 0x20000 bytes, yours is 0x%x",(unsigned) size);
+    }
+
+    if (fatal_errmsg != NULL) {
+        Location loc;
+
+        /* push a new, "none" location on the location stack; overwrite its
+         * contents with the location saved in the option; print the error
+         * (includes location); pop the top
+         */
+        loc_push_none(&loc);
+        if (pflash_drv->opts != NULL) {
+            qemu_opts_loc_restore(pflash_drv->opts);
+        }
+
+        error_report("%s", fatal_errmsg);
+        loc_pop(&loc);
+        g_free(fatal_errmsg);
+        exit(1);
+    }
+
+    /* pflash_cfi01_register() creates a deep copy of the name */
+    snprintf(name, sizeof name, "system.flash0");
+    system_flash = pflash_cfi01_register(phys_addr, NULL /* qdev */, name,
+                                         size, blk, sector_size,
+                                         size >> sector_bits,
+                                         1      /* width */,
+                                         0x0000 /* id0 */,
+                                         0x0000 /* id1 */,
+                                         0x0000 /* id2 */,
+                                         0x0000 /* id3 */,
+                                         0      /* be */);
+}
 
 /* PC hardware initialisation */
 static void pc_q35_init(MachineState *machine)
@@ -143,7 +215,9 @@ static void pc_q35_init(MachineState *machine)
     }
 
     /* allocate ram and load rom/bios */
-    if (!xen_enabled()) {
+    if (xen_enabled()) {
+        xen_map_efi_var_rom(rom_memory);
+    } else {
         pc_memory_init(pcms, get_system_memory(),
                        rom_memory, &ram_memory);
     }
@@ -196,8 +270,16 @@ static void pc_q35_init(MachineState *machine)
     for (i = 0; i < GSI_NUM_PINS; i++) {
         qdev_connect_gpio_out_named(lpc_dev, ICH9_GPIO_GSI, i, pcms->gsi[i]);
     }
-    pci_bus_irqs(host_bus, ich9_lpc_set_irq, ich9_lpc_map_irq, ich9_lpc,
-                 ICH9_LPC_NB_PIRQS);
+
+    if (xen_enabled()) {
+        #define XEN_PIIX_NUM_PIRQS      128ULL
+        pci_bus_irqs(host_bus, xen_q35_set_irq, xen_pci_slot_get_pirq,
+                     ich9_lpc, XEN_PIIX_NUM_PIRQS);
+    } else {
+        pci_bus_irqs(host_bus, ich9_lpc_set_irq, ich9_lpc_map_irq,
+                     ich9_lpc, ICH9_LPC_NB_PIRQS);
+    }
+
     pci_bus_set_route_irq_fn(host_bus, ich9_route_intx_pin_to_irq);
     isa_bus = ich9_lpc->isa_bus;
 
@@ -304,7 +386,7 @@ static void pc_q35_machine_options(MachineClass *m)
 static void pc_q35_2_9_machine_options(MachineClass *m)
 {
     pc_q35_machine_options(m);
-    m->alias = "q35";
+    m->alias = "pc";
 }
 
 DEFINE_Q35_MACHINE(v2_9, "pc-q35-2.9", NULL,
@@ -364,3 +446,30 @@ static void pc_q35_2_4_machine_options(MachineClass *m)
 
 DEFINE_Q35_MACHINE(v2_4, "pc-q35-2.4", NULL,
                    pc_q35_2_4_machine_options);
+
+#ifdef CONFIG_XEN
+static void pc_xen_hvm_init(MachineState *machine)
+{
+    PCIBus *bus;
+
+    pc_q35_init(machine);
+
+    bus = pci_find_primary_bus();
+    if (bus != NULL) {
+        pci_create_simple(bus, -1, "xen-platform");
+    }
+}
+
+static void xenfv_machine_options(MachineClass *m)
+{
+    pc_q35_machine_options(m);
+
+    m->desc = "Xen Fully-virtualized PC";
+    m->max_cpus = HVM_MAX_VCPUS;
+    m->default_machine_opts = "accel=xen";
+    m->hot_add_cpu = pc_hot_add_cpu;
+}
+
+DEFINE_PC_MACHINE(xenfv, "xenfv", pc_xen_hvm_init,
+                  xenfv_machine_options);
+#endif
